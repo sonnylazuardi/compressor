@@ -1,0 +1,8 @@
+zig-out/
+.zig-cache/
+.native/
+dist/
+.tmp-compress-out/
+.tmp-compress-test/
+*.log
+node_modules/

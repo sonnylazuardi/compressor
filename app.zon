@@ -1,0 +1,52 @@
+.{
+    .id = "com.sonny.image-compressor",
+    .name = "image-compressor",
+    .display_name = "Compressor",
+    .description = "Convert any image to WebP with adjustable quality.",
+    .version = "0.1.0",
+    .icons = .{ "assets/icon.png", "assets/icon.ico" },
+    .platforms = .{"windows"},
+    .permissions = .{ "view", "command" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "shortcuts" },
+    .shortcuts = .{
+        .{ .id = "compressor.settings", .key = ",", .modifiers = .{"primary"} },
+        .{ .id = "compressor.compress", .key = "enter", .modifiers = .{"primary"} },
+        .{ .id = "compressor.browse", .key = "o", .modifiers = .{"primary"} },
+    },
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Compressor",
+                .width = 480,
+                .height = 640,
+                .min_width = 420,
+                .min_height = 560,
+                .restore_state = false,
+                .restore_policy = "center_on_primary",
+                .titlebar = "hidden_inset_tall",
+                .views = .{
+                    .{
+                        .label = "compressor-canvas",
+                        .kind = "gpu_surface",
+                        .fill = true,
+                        .role = "Image compressor canvas",
+                        .accessibility_label = "Compressor",
+                        .gpu_backend = "software",
+                        .gpu_pixel_format = "bgra8_unorm",
+                        .gpu_present_mode = "timer",
+                        .gpu_alpha_mode = "opaque",
+                        .gpu_color_space = "srgb",
+                        .gpu_vsync = true,
+                    },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{ "zero://app", "zero://inline" },
+            .external_links = .{ .action = "deny" },
+        },
+    },
+}

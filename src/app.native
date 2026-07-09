@@ -1,0 +1,94 @@
+<!-- Full native compressor UI. Hot-reloaded by native dev. -->
+<column grow="1" padding="14" gap="10" background="background">
+  <!-- Caption drag row: pads around OS caption buttons (Windows: trailing) -->
+  <row gap="8" cross="center" window-drag="true" height="{chrome_top}">
+    <spacer width="{chrome_leading}" />
+    <text grow="1">Compressor</text>
+    <spacer width="{chrome_trailing}" />
+  </row>
+
+  <!-- Action row: settings + compress, below the caption controls -->
+  <row gap="10" cross="center">
+    <button size="sm" variant="ghost" icon="settings" label="Settings" on-press="toggle_settings" />
+    <spacer grow="1" />
+    <button
+      size="sm"
+      variant="primary"
+      icon="play"
+      disabled="{busyOrNoFile}"
+      on-press="compress"
+    >{compressLabel}</button>
+  </row>
+
+  <!-- Settings: quality slider (default 80%) -->
+  <if test="{settings_open}">
+    <column gap="8" padding="12" background="surface" radius="md">
+      <row cross="center" gap="8">
+        <text grow="1">Quality</text>
+        <text foreground="accent">{qualityPercent}</text>
+      </row>
+      <slider value="{qualityFraction}" on-change="quality_changed" label="Compression quality" />
+      <text foreground="text_muted" wrap="true">
+        Default 80%. Higher keeps more detail and a larger file.
+      </text>
+    </column>
+  </if>
+
+  <!-- Drop / browse zone -->
+  <panel
+    grow="1"
+    padding="20"
+    background="surface_subtle"
+    radius="lg"
+    on-press="browse"
+    label="Drop an image or click to browse"
+  >
+    <column grow="1" main="center" cross="center" gap="10">
+      <if test="{hasFile}">
+        <column gap="8" cross="center">
+          <avatar image="{preview_image}" size="lg" width="96" height="96" label="Selected image preview">IMG</avatar>
+          <text>{fileName}</text>
+          <text foreground="text_muted" wrap="true">{pathText}</text>
+          <if test="{hasResult}">
+            <text>{resultLine}</text>
+            <text foreground="text_muted">{outputName}</text>
+          </if>
+          <button size="sm" variant="ghost" on-press="clear">Choose another image</button>
+        </column>
+      </if>
+      <else>
+        <icon name="file-text" width="36" height="36" foreground="text_muted" />
+        <text>Drop an image here</text>
+        <text foreground="text_muted">or click to browse</text>
+        <text foreground="text_muted">.jpg, .png, .webp, .gif, .bmp, .tif, .heic, .avif</text>
+      </else>
+    </column>
+  </panel>
+
+  <if test="{hasStatus}">
+    <text foreground="text_muted" wrap="true">{statusText}</text>
+  </if>
+  <if test="{hasError}">
+    <text foreground="destructive" wrap="true">{errorText}</text>
+  </if>
+
+  <!-- Quality presets -->
+  <row gap="6" main="space_between">
+    <button size="sm" grow="1" selected="{presetLight}" on-press="set_preset_light">Light</button>
+    <button size="sm" grow="1" selected="{presetMedium}" on-press="set_preset_medium">Medium</button>
+    <button size="sm" grow="1" selected="{presetHeavy}" on-press="set_preset_heavy">Heavy</button>
+  </row>
+
+  <!-- Footer status: soft pill instead of a heavy full-bleed bar -->
+  <row
+    gap="10"
+    cross="center"
+    padding="12"
+    background="surface_subtle"
+    radius="md"
+  >
+    <icon name="circle-dot" width="14" height="14" foreground="accent" />
+    <text grow="1" foreground="text_muted" wrap="true">{statusLabel}</text>
+    <badge background="surface" foreground="accent">{qualityPercent}</badge>
+  </row>
+</column>
