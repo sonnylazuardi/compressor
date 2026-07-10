@@ -64,16 +64,16 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install Native SDK CLI
-        # Install into the workspace (not globally). On windows-latest the
-        # checkout is on D: while npm's global prefix is on C:, and Zig
-        # rejects absolute path deps in build.zig.zon — a same-drive
-        # node_modules path stays relative from .native/build/.
+        # Local install keeps the SDK on the same drive as the checkout
+        # (Windows CI: D: repo vs C: global npm prefix). Zig rejects
+        # absolute path deps in build.zig.zon.
+        # Use npx for all `native` calls — GITHUB_PATH only applies to
+        # *later* steps, so bare `native` in this step would fail.
         shell: bash
         run: |
           npm install "@native-sdk/cli@${{ env.NATIVE_CLI_VERSION }}"
-          echo "${GITHUB_WORKSPACE}/node_modules/.bin" >> "$GITHUB_PATH"
           test -f node_modules/@native-sdk/cli/src/root.zig
-          native --version
+          npx --no-install native --version
 
       - name: Resolve version
         shell: bash
@@ -93,13 +93,16 @@ jobs:
           echo "Resolved version: $version"
 
       - name: Validate markup
-        run: native check
+        shell: bash
+        run: npx --no-install native check
 
       - name: Unit tests
-        run: native test --yes
+        shell: bash
+        run: npx --no-install native test --yes
 
       - name: Build release binary
-        run: native build --yes
+        shell: bash
+        run: npx --no-install native build --yes
 
       - name: Embed Windows exe icon
         if: matrix.target == 'windows'
@@ -111,8 +114,9 @@ jobs:
 
       - name: Package macOS app
         if: matrix.target == 'macos'
+        shell: bash
         run: |
-          native package \
+          npx --no-install native package \
             --target macos \
             --signing adhoc \
             --manifest app.zon \
@@ -128,20 +132,31 @@ jobs:
 
       - name: Package Windows app
         if: matrix.target == 'windows'
-        shell: pwsh
+        shell: bash
         run: |
-          native package `
-            --target windows `
-            --manifest app.zon `
-            --binary zig-out/bin/image-compressor.exe `
+          npx --no-install native package \
+            --target windows \
+            --manifest app.zon \
+            --binary zig-out/bin/image-compressor.exe \
             --output zig-out/package/windows
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zip = Join-Path "dist" "${{ matrix.artifact }}"
-          if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path "zig-out\package\windows\*" -DestinationPath $zip
-          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
-          Set-Content -NoNewline -Path "$zip.sha256" -Value "$hash  ${{ matrix.artifact }}"
-          Get-ChildItem dist | Format-Table Name, Length
+          mkdir -p dist
+          rm -f "dist/${{ matrix.artifact }}"
+          # Prefer zip(1) if present; fall back to PowerShell Compress-Archive.
+          if command -v zip >/dev/null 2>&1; then
+            (cd zig-out/package/windows && zip -r "$GITHUB_WORKSPACE/dist/${{ matrix.artifact }}" .)
+          else
+            powershell.exe -NoProfile -Command \
+              "Compress-Archive -Path 'zig-out\\package\\windows\\*' -DestinationPath 'dist\\${{ matrix.artifact }}'"
+          fi
+          (
+            cd dist
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "${{ matrix.artifact }}"
+            else
+              shasum -a 256 "${{ matrix.artifact }}"
+            fi
+          ) > "dist/${{ matrix.artifact }}.sha256"
+          ls -lh dist/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
