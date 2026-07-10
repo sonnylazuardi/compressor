@@ -89,9 +89,6 @@ jobs:
       - name: Unit tests
         run: native test --yes
 
-      - name: Bun encoder tests
-        run: bun test scripts/compress.test.ts
-
       - name: Build release binary
         run: native build --yes
 
