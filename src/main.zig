@@ -472,6 +472,110 @@ fn pathExists(path: []const u8) bool {
     return std.c.access(zbuf[0..path.len :0].ptr, std.c.F_OK) == 0;
 }
 
+fn joinPath(buffer: []u8, dir: []const u8, rel: []const u8) ?[]const u8 {
+    if (dir.len == 0 or rel.len == 0) return null;
+    return std.fmt.bufPrint(buffer, "{s}{c}{s}", .{ dir, std.fs.path.sep, rel }) catch null;
+}
+
+fn firstExistingJoin(buffer: []u8, dir: []const u8, rel: []const u8) ?[]const u8 {
+    const joined = joinPath(buffer, dir, rel) orelse return null;
+    return if (pathExists(joined)) joined else null;
+}
+
+/// Package / project root discovered once at startup (`discoverAppRoot`).
+var app_root_storage: [max_path_bytes]u8 = undefined;
+var app_root_len: usize = 0;
+
+fn appRoot() []const u8 {
+    return app_root_storage[0..app_root_len];
+}
+
+/// Discover the directory that contains `scripts/` and `assets/` for both
+/// `native dev` (cwd = repo root) and packaged layouts (exe in `bin/` or
+/// `Contents/MacOS/`).
+pub fn discoverAppRoot(io: std.Io) void {
+    app_root_len = 0;
+    var buf: [max_path_bytes]u8 = undefined;
+
+    if (pathExists("scripts/compress.ts") or pathExists("assets/icon.png")) {
+        const n = std.Io.Dir.cwd().realPath(io, &buf) catch 0;
+        if (n > 0 and n <= app_root_storage.len) {
+            @memcpy(app_root_storage[0..n], buf[0..n]);
+            app_root_len = n;
+            return;
+        }
+    }
+
+    const exe_dir_len = std.process.executableDirPath(io, &buf) catch return;
+    const exe_dir = buf[0..exe_dir_len];
+    const package_root = std.fs.path.dirname(exe_dir) orelse exe_dir;
+
+    var probe: [max_path_bytes]u8 = undefined;
+    const probe_scripts = [_][]const u8{
+        "scripts/compress.ts",
+        "Resources/scripts/compress.ts",
+        "Resources\\scripts\\compress.ts",
+        "resources/icon.png",
+        "Resources/assets/icon.png",
+        "Resources\\assets\\icon.png",
+    };
+    for (probe_scripts) |rel| {
+        if (firstExistingJoin(&probe, package_root, rel) != null) {
+            if (package_root.len <= app_root_storage.len) {
+                @memcpy(app_root_storage[0..package_root.len], package_root);
+                app_root_len = package_root.len;
+            }
+            return;
+        }
+    }
+
+    if (package_root.len <= app_root_storage.len) {
+        @memcpy(app_root_storage[0..package_root.len], package_root);
+        app_root_len = package_root.len;
+    }
+}
+
+/// Resolve a project-relative path against the discovered app root, with
+/// packaged Windows (`resources/`) and macOS (`Resources/…`) fallbacks.
+pub fn resolveAppRelative(rel: []const u8, buffer: []u8) ?[]const u8 {
+    if (rel.len == 0) return null;
+
+    if (pathExists(rel)) {
+        const len = @min(rel.len, buffer.len);
+        @memcpy(buffer[0..len], rel[0..len]);
+        return buffer[0..len];
+    }
+
+    const root = appRoot();
+    if (root.len == 0) return null;
+    if (firstExistingJoin(buffer, root, rel)) |found| return found;
+
+    var scratch: [max_path_bytes]u8 = undefined;
+    const packaged_tails = [_][]const u8{
+        "resources",
+        "Resources",
+        "Resources/assets",
+        "Resources\\assets",
+        "Resources/scripts",
+        "Resources\\scripts",
+    };
+    for (packaged_tails) |tail| {
+        const base = joinPath(&scratch, root, tail) orelse continue;
+        if (std.mem.startsWith(u8, rel, "assets/") or std.mem.startsWith(u8, rel, "assets\\")) {
+            if (firstExistingJoin(buffer, base, rel[7..])) |found| return found;
+        }
+        if (std.mem.startsWith(u8, rel, "scripts/") or std.mem.startsWith(u8, rel, "scripts\\")) {
+            // Contents/Resources/scripts/compress.ts when base ends with scripts
+            if (std.mem.endsWith(u8, base, "scripts") or std.mem.endsWith(u8, base, "scripts\\") or std.mem.endsWith(u8, base, "scripts/")) {
+                if (firstExistingJoin(buffer, base, rel[8..])) |found| return found;
+            }
+        }
+        if (firstExistingJoin(buffer, base, rel)) |found| return found;
+    }
+
+    return null;
+}
+
 fn envGet(name: [*:0]const u8) ?[]const u8 {
     const value = std.c.getenv(name) orelse return null;
     return std.mem.span(value);
@@ -748,10 +852,16 @@ fn startPreviewLoad(model: *Model, fx: *Effects) void {
     // the spawn collect budget (512 KiB).
     model.preview_generation +%= 1;
     if (model.preview_generation == 0) model.preview_generation = 1;
+
+    var script_buf: [max_path_bytes]u8 = undefined;
+    const script = resolveAppRelative("scripts/preview.ts", &script_buf) orelse {
+        model.setStatus("Preview unavailable (missing scripts/preview.ts)");
+        return;
+    };
+
     const argv = [_][]const u8{
         model.bunPath(),
-        "run",
-        "scripts/preview.ts",
+        script,
         "--input",
         model.pathText(),
         "--size",
@@ -941,11 +1051,18 @@ fn startCompress(model: *Model, fx: *Effects) void {
     var quality_buf: [8]u8 = undefined;
     const quality_text = std.fmt.bufPrint(&quality_buf, "{d}", .{model.quality}) catch "80";
 
+    var script_buf: [max_path_bytes]u8 = undefined;
+    const script = resolveAppRelative("scripts/compress.ts", &script_buf) orelse {
+        model.busy = false;
+        model.setError("Missing scripts/compress.ts next to the app");
+        model.setStatus("Failed");
+        return;
+    };
+
     // argv slices must live until spawn copies them — use model path/output/bun storage.
     const argv = [_][]const u8{
         model.bunPath(),
-        "run",
-        "scripts/compress.ts",
+        script,
         "--input",
         model.pathText(),
         "--output",
@@ -1098,6 +1215,10 @@ fn enableWindowsDpiAwareness() void {
 pub fn main(init: std.process.Init) !void {
     // Must run before the first HWND is created (runner.runWithOptions).
     enableWindowsDpiAwareness();
+    discoverAppRoot(init.io);
+
+    var icon_buf: [max_path_bytes]u8 = undefined;
+    const icon_path = resolveAppRelative("assets/icon.png", &icon_buf) orelse "assets/icon.png";
 
     const app_state = try CompressorApp.create(std.heap.page_allocator, .{
         .name = "image-compressor",
@@ -1121,7 +1242,7 @@ pub fn main(init: std.process.Init) !void {
         .app_name = "Compressor",
         .window_title = "Compressor",
         .bundle_id = "com.sonny.image-compressor",
-        .icon_path = "assets/icon.png",
+        .icon_path = icon_path,
         .default_frame = geometry.RectF.init(0, 0, window_width, window_height),
         .restore_state = false,
         .js_window_api = false,
@@ -1146,4 +1267,13 @@ test "default output path for webp avoids overwrite" {
     var buf: [256]u8 = undefined;
     const out = try defaultOutputPath("/tmp/shot.webp", &buf);
     try std.testing.expectEqualStrings("/tmp/shot.compressed.webp", out);
+}
+
+test "resolveAppRelative finds scripts from cwd" {
+    var buf: [max_path_bytes]u8 = undefined;
+    const found = resolveAppRelative("scripts/compress.ts", &buf) orelse {
+        return error.ScriptNotFound;
+    };
+    try std.testing.expect(std.mem.endsWith(u8, found, "compress.ts"));
+    try std.testing.expect(pathExists(found));
 }

@@ -1,4 +1,5 @@
-# Embeds a multi-size .ico into a PE as RT_GROUP_ICON / RT_ICON (MAINICON).
+# Embeds a multi-size .ico into a PE as RT_GROUP_ICON / RT_ICON (MAINICON),
+# then marks the PE as Windows GUI subsystem so Explorer does not open a console.
 # Usage: powershell -File scripts/embed-exe-icon.ps1 -Exe path\to\app.exe -Ico path\to\app.ico
 
 param(
@@ -9,6 +10,20 @@ param(
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path -LiteralPath $Exe)) { throw "Exe not found: $Exe" }
 if (-not (Test-Path -LiteralPath $Ico)) { throw "Ico not found: $Ico" }
+
+# IMAGE_SUBSYSTEM_WINDOWS_GUI = 2 (vs IMAGE_SUBSYSTEM_WINDOWS_CUI = 3).
+function Set-WindowsGuiSubsystem([string]$Path) {
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $e_lfanew = [BitConverter]::ToInt32($bytes, 0x3C)
+  $subsystemOffset = $e_lfanew + 0x5C
+  $before = [BitConverter]::ToUInt16($bytes, $subsystemOffset)
+  $bytes[$subsystemOffset] = 2
+  $bytes[$subsystemOffset + 1] = 0
+  [System.IO.File]::WriteAllBytes($Path, $bytes)
+  $after = [BitConverter]::ToUInt16([System.IO.File]::ReadAllBytes($Path), $subsystemOffset)
+  if ($after -ne 2) { throw "Failed to set Windows GUI subsystem (still $after)" }
+  Write-Host "PE subsystem: $before -> $after (2=WINDOWS GUI)"
+}
 
 Add-Type -TypeDefinition @"
 using System;
@@ -121,5 +136,7 @@ public static class PeIconEmbedder {
 }
 "@
 
-[PeIconEmbedder]::Embed((Resolve-Path -LiteralPath $Exe).Path, (Resolve-Path -LiteralPath $Ico).Path)
+$exePath = (Resolve-Path -LiteralPath $Exe).Path
+[PeIconEmbedder]::Embed($exePath, (Resolve-Path -LiteralPath $Ico).Path)
 Write-Host "Embedded icon into $Exe"
+Set-WindowsGuiSubsystem $exePath

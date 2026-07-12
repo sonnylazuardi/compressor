@@ -104,10 +104,20 @@ jobs:
         shell: bash
         run: npx --no-install native test --yes
 
+      # Windows: -Dcpu=baseline so the ReleaseFast binary does not use the
+      # GitHub runner's newer ISA extensions (STATUS_ILLEGAL_INSTRUCTION /
+      # 0xc000001d on older consumer CPUs). macOS keeps host defaults.
       - name: Build release binary
         shell: bash
-        run: npx --no-install native build --yes
+        run: |
+          if [[ "${{ matrix.target }}" == "windows" ]]; then
+            npx --no-install native build --yes -Dcpu=baseline
+          else
+            npx --no-install native build --yes
+          fi
 
+      # Also flips PE subsystem Console → Windows GUI so double-click does
+      # not open a terminal (native/Zig default is CUI/console).
       - name: Embed Windows exe icon
         if: matrix.target == 'windows'
         shell: pwsh
@@ -126,6 +136,10 @@ jobs:
             --manifest app.zon \
             --binary zig-out/bin/image-compressor \
             --output zig-out/package/Compressor.app
+          # Bun encoder scripts (resolved next to the .app Contents root).
+          mkdir -p zig-out/package/Compressor.app/Contents/Resources/scripts
+          cp scripts/compress.ts scripts/preview.ts \
+            zig-out/package/Compressor.app/Contents/Resources/scripts/
           mkdir -p dist
           ditto -c -k --keepParent \
             zig-out/package/Compressor.app \
@@ -143,6 +157,10 @@ jobs:
             --manifest app.zon \
             --binary zig-out/bin/image-compressor.exe \
             --output zig-out/package/windows
+          # Bun encoder scripts (resolved from bin/../scripts/).
+          mkdir -p zig-out/package/windows/scripts
+          cp scripts/compress.ts scripts/preview.ts \
+            zig-out/package/windows/scripts/
           mkdir -p dist
           rm -f "dist/${{ matrix.artifact }}"
           # Prefer zip(1) if present; fall back to PowerShell Compress-Archive.
@@ -231,8 +249,9 @@ jobs:
             3. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode.
 
             ### Windows
-            1. Unzip and run `image-compressor.exe` (SmartScreen may warn on unsigned builds — More info → Run anyway).
-            2. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode.
+            1. Unzip and run `bin\image-compressor.exe` (SmartScreen may warn on unsigned builds — More info → Run anyway).
+            2. Keep the unzipped folder intact (`bin/`, `scripts/`, `resources/`) — compress/preview need the bundled Bun scripts.
+            3. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode.
           files: |
             dist/Compressor-macos-arm64.zip
             dist/Compressor-macos-arm64.zip.sha256
