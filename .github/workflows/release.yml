@@ -123,7 +123,7 @@ jobs:
         shell: pwsh
         run: |
           powershell -ExecutionPolicy Bypass -File .\scripts\embed-exe-icon.ps1 `
-            -Exe .\zig-out\bin\image-compressor.exe `
+            -Exe .\zig-out\bin\compressor.exe `
             -Ico .\assets\icon.ico
 
       - name: Package macOS app
@@ -134,7 +134,7 @@ jobs:
             --target macos \
             --signing adhoc \
             --manifest app.zon \
-            --binary zig-out/bin/image-compressor \
+            --binary zig-out/bin/compressor \
             --output zig-out/package/Compressor.app
           # Bun encoder scripts (resolved next to the .app Contents root).
           mkdir -p zig-out/package/Compressor.app/Contents/Resources/scripts
@@ -155,7 +155,7 @@ jobs:
           npx --no-install native package \
             --target windows \
             --manifest app.zon \
-            --binary zig-out/bin/image-compressor.exe \
+            --binary zig-out/bin/compressor.exe \
             --output zig-out/package/windows
           # Bun encoder scripts (resolved from bin/../scripts/).
           mkdir -p zig-out/package/windows/scripts
@@ -249,9 +249,9 @@ jobs:
             3. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode.
 
             ### Windows
-            1. Unzip and run `bin\image-compressor.exe` (SmartScreen may warn on unsigned builds — More info → Run anyway).
+            1. Unzip and run `bin\compressor.exe` (SmartScreen may warn on unsigned builds — More info → Run anyway).
             2. Keep the unzipped folder intact (`bin/`, `scripts/`, `resources/`) — compress/preview need the bundled Bun scripts.
-            3. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode.
+            3. Needs [Bun](https://bun.sh) 1.4+ on `PATH` for WebP encode (the app can also install Bun via PowerShell on first launch).
           files: |
             dist/Compressor-macos-arm64.zip
             dist/Compressor-macos-arm64.zip.sha256

@@ -1,9 +1,9 @@
 .{
     .id = "com.sonny.image-compressor",
-    .name = "image-compressor",
+    .name = "compressor",
     .display_name = "Compressor",
     .description = "Convert any image to WebP with adjustable quality.",
-    .version = "0.1.3",
+    .version = "0.1.4",
     .icons = .{ "assets/icon.png", "assets/icon.ico" },
     .platforms = .{ "macos", "windows" },
     .permissions = .{ "view", "command", "dialog" },

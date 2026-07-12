@@ -107,8 +107,8 @@ native dev --yes
 native build
 
 # Distributable package (run on the target OS)
-native package --target macos --signing adhoc --binary zig-out/bin/image-compressor --output zig-out/package/Compressor.app
-native package --target windows --binary zig-out/bin/image-compressor.exe --output zig-out/package/windows
+native package --target macos --signing adhoc --binary zig-out/bin/compressor --output zig-out/package/Compressor.app
+native package --target windows --binary zig-out/bin/compressor.exe --output zig-out/package/windows
 ```
 
 ## Releases (GitHub Actions)

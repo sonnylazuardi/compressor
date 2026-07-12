@@ -607,6 +607,16 @@ fn defaultBunBinDir(buffer: []u8) ?[]const u8 {
     return std.fmt.bufPrint(buffer, "{s}/.bun/bin", .{home}) catch null;
 }
 
+fn pathLooksLikeWsl(path: []const u8) bool {
+    // Native Windows builds must not pick up a Bun from a WSL mount/PATH entry.
+    if (std.ascii.indexOfIgnoreCase(path, "\\wsl$") != null) return true;
+    if (std.ascii.indexOfIgnoreCase(path, "\\wsl.localhost") != null) return true;
+    if (std.mem.startsWith(u8, path, "/mnt/")) return true;
+    if (std.mem.startsWith(u8, path, "/home/")) return true;
+    if (std.mem.startsWith(u8, path, "/usr/")) return true;
+    return false;
+}
+
 /// Resolve `bun` from PATH by scanning PATH entries for a bun binary.
 fn findBunOnPath(buffer: []u8) ?[]const u8 {
     const path_env = envGet("PATH") orelse return null;
@@ -614,6 +624,7 @@ fn findBunOnPath(buffer: []u8) ?[]const u8 {
     var it = std.mem.splitScalar(u8, path_env, sep);
     while (it.next()) |dir| {
         if (dir.len == 0) continue;
+        if (builtin.os.tag == .windows and pathLooksLikeWsl(dir)) continue;
         const candidate = if (builtin.os.tag == .windows)
             std.fmt.bufPrint(buffer, "{s}\\bun.exe", .{dir}) catch continue
         else
@@ -627,8 +638,16 @@ fn findBunOnPath(buffer: []u8) ?[]const u8 {
     return null;
 }
 
-/// Probe PATH then the default Bun install location. Returns absolute path in `buffer`.
+/// Probe Bun for this host. On Windows prefer `%USERPROFILE%\.bun\bin\bun.exe`
+/// (PowerShell installer location) before PATH, and skip WSL-looking PATH entries.
 pub fn probeBunExecutable(buffer: []u8) ?[]const u8 {
+    if (builtin.os.tag == .windows) {
+        if (defaultBunInstallPath(buffer)) |fallback| {
+            if (pathExists(fallback)) return fallback;
+        }
+        if (findBunOnPath(buffer)) |found| return found;
+        return null;
+    }
     if (findBunOnPath(buffer)) |found| return found;
     if (defaultBunInstallPath(buffer)) |fallback| {
         if (pathExists(fallback)) return fallback;
@@ -725,8 +744,9 @@ fn startBunInstall(model: *Model, fx: *Effects) void {
     model.setStatus("Installing Bun…");
     model.clearError();
 
+    // Windows: official PowerShell installer (always latest). macOS/Linux: install.sh.
     const argv = if (builtin.os.tag == .windows) [_][]const u8{
-        "powershell",
+        "powershell.exe",
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -1221,7 +1241,7 @@ pub fn main(init: std.process.Init) !void {
     const icon_path = resolveAppRelative("assets/icon.png", &icon_buf) orelse "assets/icon.png";
 
     const app_state = try CompressorApp.create(std.heap.page_allocator, .{
-        .name = "image-compressor",
+        .name = "compressor",
         .scene = shell_scene,
         .canvas_label = canvas_label,
         .update_fx = update,
